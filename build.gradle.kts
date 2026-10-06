@@ -67,15 +67,15 @@ subprojects {
     }
 
     dependencies {
-        val apk by configurations
-        val implementation by configurations
+        // Yeni gradle eklentisinde yapilandirma adi "cloudstream", eskisinde "apk"
+        val stubConf = if (configurations.findByName("cloudstream") != null) "cloudstream" else "apk"
 
         // Cloudstream sinif taslaklari
-        apk("com.lagradost:cloudstream3:pre-release")
+        add(stubConf, "com.lagradost:cloudstream3:pre-release")
 
-        implementation(kotlin("stdlib"))
-        implementation("com.github.Blatzar:NiceHttp:0.4.11")
-        implementation("org.jsoup:jsoup:1.18.3")
+        add("implementation", kotlin("stdlib"))
+        add("implementation", "com.github.Blatzar:NiceHttp:0.4.11")
+        add("implementation", "org.jsoup:jsoup:1.18.3")
     }
 }
 
