@@ -1,15 +1,10 @@
 *.iml
 .gradle
 /local.properties
-/.idea
-.DS_Store
 /build
 **/build
-/captures
+.idea
+.DS_Store
+captures
 .externalNativeBuild
 .cxx
-local.properties
-.vscode
-__pycache__/
-*.pyc
-# Build trigger after workflow fix
