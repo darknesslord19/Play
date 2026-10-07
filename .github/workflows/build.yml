@@ -1,9 +1,10 @@
 name: Build CloudStream CS3
 
 on:
+  workflow_dispatch:
   push:
     branches: [ main, master ]
-  workflow_dispatch:
+    paths-ignore: ["**/*.md"]
 
 permissions:
   contents: write
@@ -17,86 +18,79 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Setup JDK 17
+      - name: JDK 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
-      - name: Setup Gradle
+      - name: Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Make gradlew executable
-        run: chmod +x ./gradlew
-
-      - name: Build CS3
-        run: ./gradlew make --stacktrace --no-daemon
-
-      - name: Find generated CS3
-        id: find_cs3
-        shell: bash
+      - name: Build
         run: |
-          set -euo pipefail
-          FILE=$(find . -type f -name '*.cs3' -path '*/build/*' | head -n 1)
-          if [ -z "$FILE" ]; then
-            echo 'CS3_OUTPUT_MISSING'
-            find . -type f | sort | grep -E 'build|cs3' || true
-            exit 1
-          fi
-          echo "file=$FILE" >> "$GITHUB_OUTPUT"
-          echo "CS3: $FILE"
+          chmod +x gradlew
+          ./gradlew make --stacktrace
 
-      - name: Upload CS3 artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: cs3-eklentiler
-          path: ${{ steps.find_cs3.outputs.file }}
-          if-no-files-found: error
-
-      - name: Publish to builds branch
+      - name: Publish CS3
         env:
           GH_TOKEN: ${{ github.token }}
-        shell: bash
         run: |
           set -euo pipefail
-          FILE='${{ steps.find_cs3.outputs.file }}'
-          NAME=$(basename "$FILE")
-          TMP=$(mktemp -d)
-          git clone --depth 1 --branch builds "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "$TMP" 2>/dev/null || {
-            git clone --depth 1 "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "$TMP"
-            cd "$TMP"
+          rm -rf /tmp/builds
+          git fetch origin builds:refs/remotes/origin/builds || true
+          if git show-ref --verify --quiet refs/remotes/origin/builds; then
+            git worktree add -B builds /tmp/builds origin/builds
+          else
+            mkdir -p /tmp/builds
+            cd /tmp/builds
+            git init
             git checkout --orphan builds
-            git rm -rf . >/dev/null 2>&1 || true
-          }
-          cd "$TMP"
-          cp "$GITHUB_WORKSPACE/$FILE" "./$NAME"
-          python3 - "$NAME" <<'PY'
-import hashlib, json, os, sys
-from pathlib import Path
-name = sys.argv[1]
-path = Path(name)
-hashv = hashlib.sha256(path.read_bytes()).hexdigest()
-internal = path.stem
-entry = {
-    "url": f"https://raw.githubusercontent.com/{os.environ['GITHUB_REPOSITORY']}/builds/{name}",
-    "status": 1,
-    "version": 1,
-    "name": internal,
-    "internalName": internal,
-    "authors": ["darknesslord19"],
-    "description": "Tavsiye Film İzle - CloudStream eklentisi",
-    "repositoryUrl": f"https://github.com/{os.environ['GITHUB_REPOSITORY']}",
-    "language": "tr",
-    "tvTypes": ["Movie"],
-    "iconUrl": "https://www.google.com/s2/favicons?domain=tavsiyefilmizle.net&sz=%size%",
-    "apiVersion": 1,
-    "fileSize": path.stat().st_size,
-    "fileHash": "sha256-" + hashv
-}
-Path("plugins.json").write_text(json.dumps([entry], ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-PY
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add "$NAME" plugins.json
-          git commit -m "Build ${NAME}" || true
-          git push origin builds
+            git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          fi
+
+          find /tmp/builds -maxdepth 1 -name '*.cs3' -type f -delete
+          find "${GITHUB_WORKSPACE}" -mindepth 2 -path '*/build/*.cs3' -type f -exec cp {} /tmp/builds/ \;
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib, json, os
+          root=Path('/tmp/builds')
+          repo=os.environ['GITHUB_REPOSITORY']
+          source=Path(os.environ['GITHUB_WORKSPACE'])/'plugins.json'
+          old=[]
+          if source.exists():
+              try: old=json.loads(source.read_text(encoding='utf-8'))
+              except: old=[]
+          old={x.get('internalName'):x for x in old if isinstance(x,dict) and x.get('internalName')}
+          out=[]
+          for p in sorted(root.glob('*.cs3')):
+              h=hashlib.sha256(p.read_bytes()).hexdigest()
+              x=dict(old.get(p.stem,{}))
+              x.update({
+                'url':f'https://raw.githubusercontent.com/{repo}/builds/{p.name}?v={h}',
+                'name':x.get('name',p.stem),
+                'internalName':p.stem,
+                'repositoryUrl':f'https://github.com/{repo}',
+                'fileSize':p.stat().st_size,
+                'fileHash':'sha256-'+h,
+                'apiVersion':x.get('apiVersion',1),
+                'status':x.get('status',1),
+                'version':x.get('version',1)
+              })
+              x.setdefault('authors',[repo.split('/')[0]])
+              x.setdefault('language','tr')
+              x.setdefault('tvTypes',['Movie','TvSeries'])
+              out.append(x)
+          (root/'plugins.json').write_text(json.dumps(out,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+          PY
+
+          cd /tmp/builds
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Auto build CS3" || true
+          git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git push origin HEAD:builds
