@@ -1,24 +1,20 @@
-import com.android.build.api.dsl.LibraryExtension
+import com.android.build.gradle.BaseExtension
 import com.lagradost.cloudstream3.gradle.CloudstreamExtension
-import org.gradle.api.plugins.JavaPluginExtension
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
-import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
-
-plugins {
-    kotlin("jvm") version "2.4.0"
-}
+import org.jetbrains.kotlin.gradle.tasks.KotlinJvmCompile
 
 buildscript {
     repositories {
         google()
         mavenCentral()
-        gradlePluginPortal()
         maven("https://jitpack.io")
     }
+
     dependencies {
-        classpath("com.android.tools.build:gradle:9.1.1")
-        classpath("com.github.recloudstream:gradle:81b1d424d2")
-        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:2.4.0")
+        classpath("com.android.tools.build:gradle:8.7.3")
+        // Cloudstream gradle eklentisi (.cs3 uretir)
+        classpath("com.github.recloudstream:gradle:-SNAPSHOT")
+        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:2.1.0")
     }
 }
 
@@ -30,60 +26,59 @@ allprojects {
     }
 }
 
+fun Project.cloudstream(configuration: CloudstreamExtension.() -> Unit) = extensions.getByName<CloudstreamExtension>("cloudstream").configuration()
+
+fun Project.android(configuration: BaseExtension.() -> Unit) = extensions.getByName<BaseExtension>("android").configuration()
+
 subprojects {
     apply(plugin = "com.android.library")
+    apply(plugin = "kotlin-android")
     apply(plugin = "com.lagradost.cloudstream3.gradle")
 
-    extensions.getByType<CloudstreamExtension>().apply {
-        setRepo("https://github.com/darknesslord19/Play")
-        requiresResources = false
+    cloudstream {
+        // GitHub Actions icinde GITHUB_REPOSITORY otomatik dolar
+        setRepo(System.getenv("GITHUB_REPOSITORY") ?: "KULLANICI/DEPO")
     }
 
-    extensions.getByType<LibraryExtension>().apply {
-        namespace = "com.tavsiyefilmizle"
-        compileSdk = 36
+    android {
+        namespace = "com.example"
+
         defaultConfig {
             minSdk = 21
+            compileSdkVersion(35)
+            targetSdk = 35
         }
-        lint { targetSdk = 36 }
+
         compileOptions {
-            sourceCompatibility = JavaVersion.VERSION_17
-            targetCompatibility = JavaVersion.VERSION_17
+            sourceCompatibility = JavaVersion.VERSION_1_8
+            targetCompatibility = JavaVersion.VERSION_1_8
         }
-    }
 
-    extensions.findByType<JavaPluginExtension>()?.toolchain?.languageVersion?.set(JavaLanguageVersion.of(17))
-
-    tasks.withType<KotlinCompile>().configureEach {
-        compilerOptions {
-            jvmTarget.set(JvmTarget.JVM_17)
-            freeCompilerArgs.addAll(
-                "-Xno-call-assertions",
-                "-Xno-param-assertions",
-                "-Xno-receiver-assertions",
-                "-Xjspecify-annotations=ignore",
-                "-Xskip-metadata-version-check"
-            )
+        tasks.withType<KotlinJvmCompile> {
+            compilerOptions {
+                jvmTarget.set(JvmTarget.JVM_1_8)
+                freeCompilerArgs.addAll(
+                    "-Xno-call-assertions",
+                    "-Xno-param-assertions",
+                    "-Xno-receiver-assertions"
+                )
+            }
         }
     }
 
     dependencies {
-        add("cloudstream", "com.lagradost:cloudstream3:pre-release")
+        // Yeni gradle eklentisinde yapilandirma adi "cloudstream", eskisinde "apk"
+        val stubConf = if (configurations.findByName("cloudstream") != null) "cloudstream" else "apk"
+
+        // Cloudstream sinif taslaklari
+        add(stubConf, "com.lagradost:cloudstream3:pre-release")
+
         add("implementation", kotlin("stdlib"))
-        add("implementation", "com.github.Blatzar:NiceHttp:0.4.18")
-        add("implementation", "org.jsoup:jsoup:1.22.2")
-        add("implementation", "org.jspecify:jspecify:1.0.0")
-        add("implementation", "com.fasterxml.jackson.module:jackson-module-kotlin:2.13.1")
-        add("implementation", "com.fasterxml.jackson.core:jackson-databind:2.13.1")
-        add("implementation", "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
-        add("implementation", "org.mozilla:rhino:1.8.1")
-        add("implementation", "me.xdrop:fuzzywuzzy:1.4.0")
-        add("implementation", "com.google.code.gson:gson:2.14.0")
-        add("implementation", "org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
-        add("implementation", "org.bouncycastle:bcpkix-jdk18on:1.84")
+        add("implementation", "com.github.Blatzar:NiceHttp:0.4.11")
+        add("implementation", "org.jsoup:jsoup:1.18.3")
     }
 }
 
-tasks.named("clean") {
-    delete(layout.buildDirectory)
+task<Delete>("clean") {
+    delete(rootProject.layout.buildDirectory)
 }
