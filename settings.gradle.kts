@@ -1,18 +1,14 @@
-pluginManagement {
-    repositories {
-        google()
-        mavenCentral()
-        gradlePluginPortal()
-    }
-    plugins {
-        kotlin("jvm") version "2.4.0"
-    }
+rootProject.name = "CloudstreamPlugins"
+
+// Icinde build.gradle.kts bulunan her klasor otomatik modul olarak eklenir
+val disabled = listOf<String>()
+
+fun File.eachDir(block: (File) -> Unit) {
+    listFiles()?.filter { it.isDirectory }?.forEach { block(it) }
 }
 
-plugins {
-    id("org.gradle.toolchains.foojay-resolver-convention") version "1.0.0"
+File(rootDir, ".").eachDir { dir ->
+    if (!disabled.contains(dir.name) && File(dir, "build.gradle.kts").exists()) {
+        include(dir.name)
+    }
 }
-
-rootProject.name = "Play"
-
-include(":Tavsiyefilmizle")
