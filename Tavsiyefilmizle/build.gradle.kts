@@ -1,21 +1,12 @@
-// use an integer for version numbers
+// Kok build.gradle.kts zaten Android/Kotlin/CloudStream ayarlarini tum modullere uyguluyor.
+// Burada yalnizca bu eklentiye ozel bilgiler olmali.
 version = 1
 
 cloudstream {
-    description = "Tavsiyefilmizle (otomatik uretildi)"
-    authors = listOf("auto")
-
-    /**
-     * Status int as the following:
-     * 0: Down
-     * 1: Ok
-     * 2: Slow
-     * 3: Beta only
-     */
+    description = "Tavsiye Film izle"
+    authors = listOf("darknesslord19")
     status = 1
     tvTypes = listOf("Movie")
-    requiresResources = false
     language = "tr"
-
     iconUrl = "https://www.google.com/s2/favicons?domain=tavsiyefilmizle.net&sz=%size%"
 }
