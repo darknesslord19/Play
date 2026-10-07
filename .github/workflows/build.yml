@@ -1,39 +1,102 @@
-name: Build Plugin
+name: Build CloudStream CS3
 
 on:
   push:
     branches: [ main, master ]
-    paths-ignore:
-      - "**/*.md"
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: JDK 17
+      - name: Setup JDK 17
         uses: actions/setup-java@v4
         with:
+          distribution: temurin
           java-version: '17'
-          distribution: 'temurin'
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: gradlew calistirilabilir yap
-        run: chmod +x gradlew
+      - name: Make gradlew executable
+        run: chmod +x ./gradlew
 
-      - name: Build Plugins
-        run: ./gradlew make --stacktrace
+      - name: Build CS3
+        run: ./gradlew make --stacktrace --no-daemon
 
-      - name: .cs3 dosyalarini yukle
+      - name: Find generated CS3
+        id: find_cs3
+        shell: bash
+        run: |
+          set -euo pipefail
+          FILE=$(find . -type f -name '*.cs3' -path '*/build/*' | head -n 1)
+          if [ -z "$FILE" ]; then
+            echo 'CS3_OUTPUT_MISSING'
+            find . -type f | sort | grep -E 'build|cs3' || true
+            exit 1
+          fi
+          echo "file=$FILE" >> "$GITHUB_OUTPUT"
+          echo "CS3: $FILE"
+
+      - name: Upload CS3 artifact
         uses: actions/upload-artifact@v4
         with:
           name: cs3-eklentiler
-          path: "**/build/*.cs3"
+          path: ${{ steps.find_cs3.outputs.file }}
           if-no-files-found: error
+
+      - name: Publish to builds branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          FILE='${{ steps.find_cs3.outputs.file }}'
+          NAME=$(basename "$FILE")
+          TMP=$(mktemp -d)
+          git clone --depth 1 --branch builds "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "$TMP" 2>/dev/null || {
+            git clone --depth 1 "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "$TMP"
+            cd "$TMP"
+            git checkout --orphan builds
+            git rm -rf . >/dev/null 2>&1 || true
+          }
+          cd "$TMP"
+          cp "$GITHUB_WORKSPACE/$FILE" "./$NAME"
+          python3 - "$NAME" <<'PY'
+import hashlib, json, os, sys
+from pathlib import Path
+name = sys.argv[1]
+path = Path(name)
+hashv = hashlib.sha256(path.read_bytes()).hexdigest()
+internal = path.stem
+entry = {
+    "url": f"https://raw.githubusercontent.com/{os.environ['GITHUB_REPOSITORY']}/builds/{name}",
+    "status": 1,
+    "version": 1,
+    "name": internal,
+    "internalName": internal,
+    "authors": ["darknesslord19"],
+    "description": "Tavsiye Film İzle - CloudStream eklentisi",
+    "repositoryUrl": f"https://github.com/{os.environ['GITHUB_REPOSITORY']}",
+    "language": "tr",
+    "tvTypes": ["Movie"],
+    "iconUrl": "https://www.google.com/s2/favicons?domain=tavsiyefilmizle.net&sz=%size%",
+    "apiVersion": 1,
+    "fileSize": path.stat().st_size,
+    "fileHash": "sha256-" + hashv
+}
+Path("plugins.json").write_text(json.dumps([entry], ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+PY
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add "$NAME" plugins.json
+          git commit -m "Build ${NAME}" || true
+          git push origin builds

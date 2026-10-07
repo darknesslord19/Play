@@ -2,16 +2,17 @@ import com.android.build.api.dsl.LibraryExtension
 import com.lagradost.cloudstream3.gradle.CloudstreamExtension
 import org.gradle.api.plugins.JavaPluginExtension
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
-import org.jetbrains.kotlin.gradle.tasks.KotlinJvmCompile
+import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 plugins {
-    kotlin("jvm")
+    kotlin("jvm") version "2.4.0"
 }
 
 buildscript {
     repositories {
         google()
         mavenCentral()
+        gradlePluginPortal()
         maven("https://jitpack.io")
     }
     dependencies {
@@ -29,48 +30,40 @@ allprojects {
     }
 }
 
-fun Project.cloudstream(configuration: CloudstreamExtension.() -> Unit) =
-    extensions.getByName<CloudstreamExtension>("cloudstream").configuration()
-
-fun Project.android(configuration: LibraryExtension.() -> Unit) {
-    extensions.getByName<LibraryExtension>("android").apply {
-        project.extensions.findByType(JavaPluginExtension::class.java)?.apply {
-            toolchain { languageVersion.set(JavaLanguageVersion.of(17)) }
-        }
-        configuration()
-    }
-}
-
 subprojects {
     apply(plugin = "com.android.library")
     apply(plugin = "com.lagradost.cloudstream3.gradle")
 
-    cloudstream {
-        setRepo(System.getenv("GITHUB_REPOSITORY") ?: "https://github.com/csprofesor/gsrepo")
-        authors = listOf("gsrepo")
+    extensions.getByType<CloudstreamExtension>().apply {
+        setRepo("https://github.com/darknesslord19/Play")
         requiresResources = false
     }
 
-    android {
-        namespace = "com.gsrepo"
+    extensions.getByType<LibraryExtension>().apply {
+        namespace = "com.tavsiyefilmizle"
         compileSdk = 36
-        defaultConfig { minSdk = 21 }
+        defaultConfig {
+            minSdk = 21
+        }
         lint { targetSdk = 36 }
         compileOptions {
             sourceCompatibility = JavaVersion.VERSION_17
             targetCompatibility = JavaVersion.VERSION_17
         }
-        tasks.withType<KotlinJvmCompile>().configureEach {
-            compilerOptions {
-                jvmTarget.set(JvmTarget.JVM_17)
-                freeCompilerArgs.addAll(
-                    "-Xno-call-assertions",
-                    "-Xno-param-assertions",
-                    "-Xno-receiver-assertions",
-                    "-Xjspecify-annotations=ignore",
-                    "-Xskip-metadata-version-check"
-                )
-            }
+    }
+
+    extensions.findByType<JavaPluginExtension>()?.toolchain?.languageVersion?.set(JavaLanguageVersion.of(17))
+
+    tasks.withType<KotlinCompile>().configureEach {
+        compilerOptions {
+            jvmTarget.set(JvmTarget.JVM_17)
+            freeCompilerArgs.addAll(
+                "-Xno-call-assertions",
+                "-Xno-param-assertions",
+                "-Xno-receiver-assertions",
+                "-Xjspecify-annotations=ignore",
+                "-Xskip-metadata-version-check"
+            )
         }
     }
 
@@ -92,11 +85,5 @@ subprojects {
 }
 
 tasks.named("clean") {
-    delete(rootProject.layout.buildDirectory)
+    delete(layout.buildDirectory)
 }
-repositories {
-    mavenCentral()
-}
-dependencies {
-    testImplementation(kotlin("test"))
-}// Trigger workflow
