@@ -1,0 +1,1 @@
+Serve decrypted M3U8 over local HTTP Server proxy (http://127.0.0.1) to fix ExoPlayer Cronet data URI scheme error (v47).
