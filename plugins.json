@@ -1,0 +1,23 @@
+[
+  {
+    "url": "https://raw.githubusercontent.com/darknesslord19/Play/builds/Tavsiyefilmizle.cs3?v=40d035adbb5d611608fc1d1cf5f817babebd14ebfdcd4c044f2a2a6971539157",
+    "status": 1,
+    "version": 1,
+    "name": "Tavsiyefilmizle",
+    "internalName": "Tavsiyefilmizle",
+    "authors": [
+      "darknesslord19"
+    ],
+    "description": "Tavsiyefilmizle eklentisi",
+    "repositoryUrl": "https://github.com/darknesslord19/Play",
+    "language": "tr",
+    "tvTypes": [
+      "Movie",
+      "TvSeries"
+    ],
+    "iconUrl": "https://www.google.com/s2/favicons?domain=github.com&sz=%size%",
+    "apiVersion": 1,
+    "fileSize": 10823,
+    "fileHash": "sha256-40d035adbb5d611608fc1d1cf5f817babebd14ebfdcd4c044f2a2a6971539157"
+  }
+]
