@@ -2,9 +2,10 @@ package com.tavsiyefilmizle
 
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
-import org.jsoup.Jsoup
+import org.jsoup.nodes.Element
+import java.net.URLEncoder
 
-class Tavsiyefilmizle : MainUrlPlugin() {
+class Tavsiyefilmizle : MainAPI() {
     override var mainUrl = "https://tavsiyefilmizle.org"
     override var name = "Tavsiye Film izle"
     override val supportedTypes = setOf(TvType.Movie)
@@ -16,38 +17,54 @@ class Tavsiyefilmizle : MainUrlPlugin() {
         "$mainUrl/category/en-iyi-filmler/page/" to "En İyi Filmler"
     )
 
-    override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        val document = app.get("${request.data}$page").document
-        val home = document.select("article, .film-box, .post-item").mapNotNull {
-            val title = it.selectFirst("h2, .title, a")?.text() ?: return@mapNotNull null
-            val href = it.selectFirst("a")?.attr("href") ?: return@mapNotNull null
-            val posterUrl = it.selectFirst("img")?.attr("src")
+    private fun Element.toResult(): SearchResponse? {
+        val a = selectFirst("a[href]") ?: return null
+        val href = fixUrlNull(a.attr("href")) ?: return null
+        val title = (selectFirst("h2, .title")?.text() ?: a.attr("title").ifBlank { a.text() }).trim()
+        if (title.isBlank()) return null
+        val img = selectFirst("img")
+        val poster = fixUrlNull(
+            img?.attr("data-src")?.ifBlank { null }
+                ?: img?.attr("data-lazy-src")?.ifBlank { null }
+                ?: img?.attr("src")
+        )
+        return newMovieSearchResponse(title, href, TvType.Movie) { this.posterUrl = poster }
+    }
 
-            newMovieSearchResponse(title, href, TvType.Movie) {
-                this.posterUrl = posterUrl
-            }
+    override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
+        val items = try {
+            app.get("${request.data}$page").document
+                .select("article, .film-box, .post-item")
+                .mapNotNull { it.toResult() }
+                .distinctBy { it.url }
+        } catch (e: Exception) {
+            emptyList()
         }
-        return newHomePageResponse(request.name, home)
+        return newHomePageResponse(request.name, items, hasNext = items.isNotEmpty())
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
-        val document = app.get("$mainUrl/?s=$query").document
-        return document.select("article, .post-item").mapNotNull {
-            val title = it.selectFirst("h2, a")?.text() ?: return@mapNotNull null
-            val href = it.selectFirst("a")?.attr("href") ?: return@mapNotNull null
-            val posterUrl = it.selectFirst("img")?.attr("src")
-
-            newMovieSearchResponse(title, href, TvType.Movie) {
-                this.posterUrl = posterUrl
-            }
+        val q = URLEncoder.encode(query, "UTF-8")
+        return try {
+            app.get("$mainUrl/?s=$q").document
+                .select("article, .film-box, .post-item")
+                .mapNotNull { it.toResult() }
+                .distinctBy { it.url }
+        } catch (e: Exception) {
+            emptyList()
         }
     }
 
-    override suspend fun load(url: String): LoadResponse {
+    override suspend fun load(url: String): LoadResponse? {
         val document = app.get(url).document
-        val title = document.selectFirst("h1, .entry-title")?.text() ?: "Bilinmeyen Film"
-        val poster = document.selectFirst(".poster img, .entry-content img")?.attr("src")
+        val title = document.selectFirst("h1, .entry-title")?.text()?.trim()
+            ?.takeIf { it.isNotBlank() } ?: return null
+        val poster = fixUrlNull(
+            document.selectFirst("meta[property=og:image]")?.attr("content")
+                ?: document.selectFirst(".poster img, .entry-content img")?.attr("src")
+        )
         val plot = document.selectFirst(".description, .entry-content p")?.text()
+            ?: document.selectFirst("meta[property=og:description]")?.attr("content")
 
         return newMovieLoadResponse(title, url, TvType.Movie, url) {
             this.posterUrl = poster
@@ -57,19 +74,20 @@ class Tavsiyefilmizle : MainUrlPlugin() {
 
     override suspend fun loadLinks(
         data: String,
-        isCdn: Boolean,
-        handler: PlaylistUtils,
+        isCasting: Boolean,
+        subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         val document = app.get(data).document
-        val iframes = document.select("iframe")
-
-        for (iframe in iframes) {
-            val src = iframe.attr("src")
-            if (src.isNotEmpty()) {
-                loadExtractor(src, data, callback)
-            }
+        var found = false
+        for (iframe in document.select("iframe")) {
+            val src = listOf("data-litespeed-src", "data-src", "data-lazy-src", "src")
+                .map { iframe.attr(it) }
+                .firstOrNull { it.startsWith("http") || it.startsWith("//") }
+                ?: continue
+            if (src.contains("youtube", ignoreCase = true)) continue
+            if (loadExtractor(fixUrl(src), data, subtitleCallback, callback)) found = true
         }
-        return true
+        return found
     }
 }

@@ -11,6 +11,7 @@ on:
   workflow_dispatch:
   push:
     branches:
+      - main
       - master
     paths-ignore:
       - "**/*.md"
@@ -21,6 +22,24 @@ jobs:
   CloudStreamDerleyici:
     runs-on: ubuntu-latest
     steps:
+      - name: "'builds' dalı yoksa oluştur"
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          if ! git ls-remote --exit-code --heads "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git" builds >/dev/null 2>&1; then
+            echo "builds dalı yok, boş (orphan) olarak oluşturuluyor..."
+            mkdir _builds_init && cd _builds_init
+            git init -q
+            git checkout -q --orphan builds
+            git -c user.email=actions@github.com -c user.name="GitHub Actions" commit -q --allow-empty -m "builds dalı oluşturuldu"
+            git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git"
+            git push origin builds
+            cd .. && rm -rf _builds_init
+          else
+            echo "builds dalı mevcut."
+          fi
+
       - name: "'src' Depo Kontrolü"
         uses: actions/checkout@v4.2.2
         with:
@@ -51,7 +70,9 @@ jobs:
 
       - name: Tüm CloudStream Eklentilerini Derle
         working-directory: src
-        run: ./gradlew make --stacktrace
+        run: |
+          chmod +x gradlew
+          ./gradlew make --stacktrace
 
       - name: "'build' Derlemelerini Yükle"
         run: |
@@ -107,14 +128,14 @@ jobs:
                   item = entries[name]
               else:
                   item = {
-                      "url": f"https://raw.githubusercontent.com/csprofesor/gsrepo/builds/{target.name}",
+                      "url": f"https://raw.githubusercontent.com/${{ github.repository }}/builds/{target.name}",
                       "status": 1,
                       "version": 1,
                       "name": name,
                       "internalName": name,
-                      "authors": ["csprofesor"],
+                      "authors": ["${{ github.repository_owner }}"],
                       "description": f"{name} eklentisi",
-                      "repositoryUrl": "https://github.com/csprofesor/gsrepo",
+                      "repositoryUrl": "https://github.com/${{ github.repository }}",
                       "language": "tr",
                       "tvTypes": ["Movie", "TvSeries"],
                       "iconUrl": f"https://www.google.com/s2/favicons?domain=github.com&sz=%size%",
@@ -123,7 +144,7 @@ jobs:
               digest = hashlib.sha256(target.read_bytes()).hexdigest()
               item['fileSize'] = target.stat().st_size
               item['fileHash'] = f'sha256-{digest}'
-              item['url'] = f'https://raw.githubusercontent.com/csprofesor/gsrepo/builds/{target.name}?v={digest}'
+              item['url'] = f'https://raw.githubusercontent.com/${{ github.repository }}/builds/{target.name}?v={digest}'
               final_data.append(item)
 
           final_data.sort(key=lambda x: x.get('name', '').lower())
